@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/publish.yaml'
+      - 'images/**'
 
 permissions: {}
 
@@ -38,16 +39,29 @@ jobs:
           - service: appview
             upstream: bluesky-social/atproto
             dockerfile: services/bsky/Dockerfile
+          - service: bsync
+            upstream: bluesky-social/atproto
+            dockerfile: services/bsync/Dockerfile
+          - service: plc
+            upstream: did-method-plc/did-method-plc
+            dockerfile: packages/server/Dockerfile
     steps:
+      - name: Checkout publishing repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          path: publisher
+          persist-credentials: false
       - name: Shallow checkout upstream main
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           repository: ${{ matrix.upstream }}
+          path: upstream
           ref: main
           fetch-depth: 1
           persist-credentials: false
       - name: Prepare image metadata
         id: meta
+        working-directory: upstream
         env:
           REPOSITORY: ${{ github.repository }}
           SERVICE: ${{ matrix.service }}
@@ -60,6 +74,8 @@ jobs:
             echo "image=${image}"
             echo "package=${REPOSITORY#*/}/${SERVICE}"
             echo "tag=${image}:${timestamp}-${revision:0:12}"
+            echo "version=${timestamp}-${revision:0:12}"
+            echo "dataplane=ghcr.io/${REPOSITORY,,}/dataplane"
             echo "revision=${revision}"
             echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "${GITHUB_OUTPUT}"
@@ -75,8 +91,8 @@ jobs:
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
+          context: upstream
+          file: upstream/${{ matrix.dockerfile }}
           platforms: linux/amd64
           pull: true
           push: true
@@ -97,6 +113,33 @@ jobs:
             DATE=${{ steps.meta.outputs.created }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
+      - name: Build and push sandbox dataplane
+        if: matrix.service == 'appview'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: publisher/images/dataplane
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            APPVIEW_IMAGE=${{ steps.meta.outputs.image }}@${{ steps.build.outputs.digest }}
+          tags: |
+            ${{ steps.meta.outputs.dataplane }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.dataplane }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.meta.outputs.revision }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.created }}
+      - name: Keep the newest three dataplane versions
+        if: matrix.service == 'appview'
+        uses: actions/delete-package-versions@25ad4af5be03aef10e0b3376b248688b7a44c40b
+        with:
+          owner: ${{ github.repository_owner }}
+          package-name: atproto-containers/dataplane
+          package-type: container
+          min-versions-to-keep: 3
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Keep the newest three image versions
         uses: actions/delete-package-versions@25ad4af5be03aef10e0b3376b248688b7a44c40b
         with:
