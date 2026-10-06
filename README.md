@@ -78,8 +78,9 @@ Set `RELAY_PLC_HOST` to the PLC directory URL and register the PDS hosts whose
 records should be collected. Configure those PDS instances to notify Relay
 through `PDS_CRAWLERS`.
 
-Preserve Relay's database and event log across restarts. SQLite is suitable
-for small installations; PostgreSQL is also supported.
+The Relay is patched to allow private address resolution, 
+set `RELAY_ALLOW_PRIVATE_ADDRESSES=true` to use it. This should only be used in
+a trusted network, don't enable it publicly.
 
 ### Rainbow
 

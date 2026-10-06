@@ -1,0 +1,67 @@
+diff --git a/util/ssrf/ssrf.go b/util/ssrf/ssrf.go
+--- a/util/ssrf/ssrf.go
++++ b/util/ssrf/ssrf.go
+@@ -21,6 +21,7 @@ import (
+ 	"fmt"
+ 	"net"
+ 	"net/http"
++	"os"
+ 	"syscall"
+ 	"time"
+ )
+@@ -121,11 +122,12 @@ func PublicOnlyControl(network string, address string, conn syscall.RawConn) error
+ 		return fmt.Errorf("%s is not a valid IP address", host)
+ 	}
+ 
+-	if !IsPublicIPAddress(ipaddress) {
++	allowPrivate := os.Getenv("RELAY_ALLOW_PRIVATE_ADDRESSES") == "true" && ipaddress.IsPrivate()
++	if !allowPrivate && !IsPublicIPAddress(ipaddress) {
+ 		return fmt.Errorf("%w: %s is not a public IP address", ErrUnsafeNetworkAddress, ipaddress)
+ 	}
+ 
+-	if !(port == "80" || port == "443") {
++	if !allowPrivate && !(port == "80" || port == "443") {
+ 		return fmt.Errorf("%w: %s is not a safe port number", ErrUnsafeNetworkAddress, port)
+ 	}
+ 
+diff --git a/util/ssrf/relay_private_test.go b/util/ssrf/relay_private_test.go
+new file mode 100644
+--- /dev/null
++++ b/util/ssrf/relay_private_test.go
+@@ -0,0 +1,36 @@
++package ssrf
++
++import "testing"
++
++func TestRelayPrivateAddresses(t *testing.T) {
++	for _, setting := range []string{"", "false", "TRUE", "true"} {
++		t.Run(setting, func(t *testing.T) {
++			t.Setenv("RELAY_ALLOW_PRIVATE_ADDRESSES", setting)
++			for _, address := range []string{
++				"10.0.0.1:80", "10.0.0.1:2583", "172.16.0.1:443",
++				"192.168.0.1:2583", "[fd00::1]:2583", "[::ffff:10.0.0.1]:2583",
++			} {
++				if err := PublicOnlyControl("tcp4", address, nil); (err == nil) != (setting == "true") {
++					t.Errorf("address %s with setting %q: %v", address, setting, err)
++				}
++			}
++			for _, address := range []string{
++				"127.0.0.1:80", "169.254.169.254:80", "100.64.0.1:80",
++				"[::1]:80", "[fe80::1]:80", "224.0.0.1:80",
++				"8.8.8.8:2583", "not-an-ip:80", "10.0.0.1",
++			} {
++				if err := PublicOnlyControl("tcp4", address, nil); err == nil {
++					t.Errorf("unsafe address allowed: %s", address)
++				}
++			}
++			for _, address := range []string{"8.8.8.8:80", "8.8.8.8:443", "[2606:4700:4700::1111]:443"} {
++				if err := PublicOnlyControl("tcp6", address, nil); err != nil {
++					t.Errorf("public address blocked: %s: %v", address, err)
++				}
++			}
++			if err := PublicOnlyControl("udp4", "10.0.0.1:80", nil); err == nil {
++				t.Error("unsafe network allowed")
++			}
++		})
++	}
++}

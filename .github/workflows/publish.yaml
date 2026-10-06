@@ -59,6 +59,14 @@ jobs:
           ref: main
           fetch-depth: 1
           persist-credentials: false
+      - name: Patch Relay private-network support
+        if: matrix.service == 'relay'
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          git apply --check ../publisher/images/relay/private-addresses.patch
+          git apply ../publisher/images/relay/private-addresses.patch
+          go test ./util/ssrf
       - name: Prepare image metadata
         id: meta
         working-directory: upstream
