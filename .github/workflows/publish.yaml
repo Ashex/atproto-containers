@@ -67,6 +67,12 @@ jobs:
           git apply --check ../publisher/images/relay/private-addresses.patch
           git apply ../publisher/images/relay/private-addresses.patch
           go test ./util/ssrf
+      - name: Use the target architecture for Rainbow
+        if: matrix.service == 'rainbow'
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          sed -i '/^ENV GOARCH="amd64"$/d' cmd/rainbow/Dockerfile
       - name: Prepare image metadata
         id: meta
         working-directory: upstream
@@ -87,6 +93,10 @@ jobs:
             echo "revision=${revision}"
             echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "${GITHUB_OUTPUT}"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
+        with:
+          platforms: arm64
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
       - name: Log in to GHCR
@@ -101,7 +111,7 @@ jobs:
         with:
           context: upstream
           file: upstream/${{ matrix.dockerfile }}
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           pull: true
           push: true
           provenance: false
@@ -126,7 +136,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: publisher/images/dataplane
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
           sbom: false
@@ -139,23 +149,6 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.meta.outputs.revision }}
             org.opencontainers.image.created=${{ steps.meta.outputs.created }}
-      - name: Keep the newest three dataplane versions
-        if: matrix.service == 'appview'
-        uses: actions/delete-package-versions@25ad4af5be03aef10e0b3376b248688b7a44c40b
-        with:
-          owner: ${{ github.repository_owner }}
-          package-name: atproto-containers/dataplane
-          package-type: container
-          min-versions-to-keep: 3
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Keep the newest three image versions
-        uses: actions/delete-package-versions@25ad4af5be03aef10e0b3376b248688b7a44c40b
-        with:
-          owner: ${{ github.repository_owner }}
-          package-name: ${{ steps.meta.outputs.package }}
-          package-type: container
-          min-versions-to-keep: 3
-          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Summarize publication
         env:
           IMAGE: ${{ steps.meta.outputs.tag }}

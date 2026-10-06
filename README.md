@@ -1,7 +1,8 @@
 # AT Protocol service containers
 
 Daily container builds for AT Protocol and Bluesky services. Images are built
-from upstream `main` and run on `linux/amd64`.
+from upstream `main` and published for `linux/amd64` and `linux/arm64`.
+Both architectures share each published tag; Docker selects the host architecture.
 
 ## Available images
 
@@ -33,9 +34,10 @@ For example:
 docker pull ghcr.io/ashex/atproto-containers/appview:latest
 ```
 
-Cleanup keeps the newest three image versions for each service. Both tags on
-one image refer to the same version. Older timestamp tags are removed with
-their image versions, subject to GHCR deletion restrictions.
+Both tags refer to the same multi-architecture manifest index. Automatic
+count-based cleanup is disabled because GHCR counts indexes and their child
+architecture manifests separately; deleting individual versions can break
+published tags. Retain indexes and all referenced manifests together.
 
 ## Service dependencies
 
