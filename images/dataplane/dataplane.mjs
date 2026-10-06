@@ -27,7 +27,12 @@ let repositorySubscription
 let bsyncSubscription
 try {
   await database.migrateToLatestOrThrow()
-  dataplane = await DataPlaneServer.create(database, port, plcUrl)
+  dataplane = await DataPlaneServer.create(
+    database,
+    port,
+    plcUrl,
+    process.env.BSKY_DISABLE_SSRF_PROTECTION === 'true' ? globalThis.fetch : undefined,
+  )
   repositorySubscription = new RepoSubscription({
     db: database,
     service: firehoseUrl,
